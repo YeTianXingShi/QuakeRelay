@@ -48,6 +48,16 @@ docker compose pull
 docker compose up -d
 ```
 
+如果希望所有环境变量都直接写在 Compose 文件中，使用 `compose.online.yaml`，先替换其中的密钥、高德 Key 和公网地址，然后执行：
+
+```bash
+mkdir -p data
+docker compose -f compose.online.yaml pull
+docker compose -f compose.online.yaml up -d
+```
+
+该部署文件使用 `./data:/data` 目录映射，SQLite 数据库和备份会保存在执行命令目录下的 `data/` 中。
+
 也可以从当前源码本地构建：
 
 ```bash
