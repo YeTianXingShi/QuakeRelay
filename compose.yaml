@@ -1,0 +1,22 @@
+services:
+  quakerelay:
+    build: .
+    container_name: quakerelay
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      QUAKERELAY_SECRET_KEY: ${QUAKERELAY_SECRET_KEY:?Set QUAKERELAY_SECRET_KEY in .env}
+    volumes:
+      - quakerelay-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  quakerelay-data:
