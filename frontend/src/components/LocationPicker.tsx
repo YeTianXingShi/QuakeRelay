@@ -5,7 +5,12 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import type { PublicConfig } from '../types'
 
-interface PickedPlace { name: string; address: string; latitude: number; longitude: number }
+interface PickedPlace { name: string; address: string; province: string; city: string; district: string; latitude: number; longitude: number }
+
+function componentText(value: unknown): string {
+  if (Array.isArray(value)) return value.join('')
+  return typeof value === 'string' ? value : ''
+}
 
 export default function LocationPicker({ onPick }: { onPick: (place: PickedPlace) => void }) {
   const container = useRef<HTMLDivElement>(null)
@@ -41,7 +46,16 @@ export default function LocationPicker({ onPick }: { onPick: (place: PickedPlace
         const geocoder = new AMap.Geocoder()
         geocoder.getAddress([lng, lat], (_status: string, result: any) => {
           const address = result?.regeocode?.formattedAddress ?? ''
-          selectPlace(AMap, { name: address || '自定义地点', address, latitude: lat, longitude: lng })
+          const component = result?.regeocode?.addressComponent ?? {}
+          selectPlace(AMap, {
+            name: address || '自定义地点',
+            address,
+            province: componentText(component.province),
+            city: componentText(component.city),
+            district: componentText(component.district),
+            latitude: lat,
+            longitude: lng,
+          })
         })
       })
     })
@@ -69,6 +83,9 @@ export default function LocationPicker({ onPick }: { onPick: (place: PickedPlace
         <List.Item className="search-result" onClick={() => selectPlace(amapRef.current, {
           name: item.name,
           address: `${item.pname ?? ''}${item.cityname ?? ''}${item.adname ?? ''}${item.address ?? ''}`,
+          province: componentText(item.pname),
+          city: componentText(item.cityname),
+          district: componentText(item.adname),
           latitude: item.location.lat,
           longitude: item.location.lng,
         })}>

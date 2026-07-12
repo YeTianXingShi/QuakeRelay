@@ -23,6 +23,9 @@ body { margin: 0; min-width: 320px; }
 .source-summary-link:hover { color: inherit; }
 .source-filters { margin-bottom: 16px; }
 .source-payload { max-height: 440px; margin: 0; padding: 12px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 6px; background: #0f172a; color: #e2e8f0; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.weather-filters { margin-bottom: 16px; }
+.weather-matched-row > td { background: #fff7ed !important; }
+.location-admin-warning { margin-top: 16px; }
 @media (max-width: 700px) {
   .header { padding-inline: 12px; gap: 8px; }
   .brand { font-size: 16px; }

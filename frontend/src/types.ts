@@ -68,6 +68,9 @@ export interface Location {
   id: string
   name: string
   address: string
+  province: string
+  city: string
+  district: string
   latitude: number
   longitude: number
   gcj02_latitude: number
@@ -87,4 +90,26 @@ export interface Webhook {
   has_bot_token: boolean
   timeout_seconds: number
   enabled: boolean
+  earthquake_enabled: boolean
+  weather_enabled: boolean
+}
+
+export interface WeatherRankEntry {
+  rank: number
+  province: string
+  city: string
+  value: string
+  matched: boolean
+  location_names: string[]
+}
+
+export interface WeatherSnapshot {
+  id: string
+  hour_key: string
+  observed_at: string
+  temperature_rank: WeatherRankEntry[]
+  rain_rank: WeatherRankEntry[]
+  wind_rank: WeatherRankEntry[]
+  content_hash: string
+  updated_at: string
 }

@@ -58,3 +58,27 @@ def test_telegram_system_status_message() -> None:
     assert "数据源异常" in text
     assert "wolfx_ws" in text
     assert "timeout" in text
+
+
+def test_telegram_weather_ranking_message() -> None:
+    text = telegram_message(
+        {
+            "kind": "weather.ranking",
+            "weather": {
+                "observed_at": "2026-07-12T09:00:00+00:00",
+                "matches": [
+                    {
+                        "kind": "temperature",
+                        "rank": 4,
+                        "province": "福建",
+                        "city": "宁德福鼎市",
+                        "value": "40.0 ℃",
+                        "location_names": ["家"],
+                    }
+                ],
+            },
+        }
+    )
+    assert "气象实况排行" in text
+    assert "高温第 4 名" in text
+    assert "匹配：家" in text

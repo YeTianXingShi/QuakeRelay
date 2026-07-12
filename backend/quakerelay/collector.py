@@ -13,11 +13,14 @@ from .db import SessionLocal
 from .events import broker
 from .ingest import ingest_payload
 from .models import SourceHealth
-from .notifications import enqueue_system_notification
+from .notifications import enqueue_system_notification, enqueue_weather_notification
 from .sources import LOGICAL_SOURCES
+from .weather import ingest_weather_payload, latest_is_notifiable, weather_matches
 
 logger = logging.getLogger(__name__)
 WS_URL = "wss://ws-api.wolfx.jp/all_eew"
+WEATHER_URL = "https://api.wolfx.jp/weather_rank.json"
+WEATHER_HEALTH_KEY = "http:weather_rank"
 HTTP_SOURCES = {
     "sc_eew": "https://api.wolfx.jp/sc_eew.json",
     "fj_eew": "https://api.wolfx.jp/fj_eew.json",
@@ -50,6 +53,7 @@ class WolfxCollector:
         tasks = [
             asyncio.create_task(self._websocket_loop(), name="wolfx-websocket"),
             asyncio.create_task(self._http_loop(), name="wolfx-http"),
+            asyncio.create_task(self._weather_loop(), name="wolfx-weather"),
             asyncio.create_task(self._health_loop(), name="wolfx-health"),
         ]
         try:
@@ -151,6 +155,47 @@ class WolfxCollector:
                 except TimeoutError:
                     pass
 
+    async def _weather_loop(self) -> None:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            while not self._stop.is_set():
+                try:
+                    response = await client.get(WEATHER_URL)
+                    response.raise_for_status()
+                    payload = response.json()
+                    if not isinstance(payload, dict):
+                        raise ValueError("weather_rank response must be a JSON object")
+                    with SessionLocal() as session, session.begin():
+                        health = self._get_health(session, WEATHER_HEALTH_KEY)
+                        health.connected = True
+                        health.last_message_at = datetime.now(UTC)
+                        health.last_error = None
+                        health.latest_payload = payload
+                        health.updated_at = datetime.now(UTC)
+                        _, latest = ingest_weather_payload(session, payload)
+                        session.flush()
+                        if latest and latest_is_notifiable(latest):
+                            enqueue_weather_notification(
+                                session, latest, weather_matches(session, latest)
+                            )
+                    await broker.publish(
+                        {"type": "weather", "source": WEATHER_HEALTH_KEY}
+                    )
+                    await broker.publish(
+                        {"type": "source_health", "source": WEATHER_HEALTH_KEY}
+                    )
+                except Exception as exc:
+                    logger.warning("Wolfx weather sync failed: %s", exc)
+                    self._set_channel_health(
+                        WEATHER_HEALTH_KEY, connected=False, error=str(exc)
+                    )
+                    await broker.publish(
+                        {"type": "source_health", "source": WEATHER_HEALTH_KEY}
+                    )
+                try:
+                    await asyncio.wait_for(self._stop.wait(), timeout=300)
+                except TimeoutError:
+                    pass
+
     async def _ingest(
         self,
         payload: dict[str, Any],
@@ -184,6 +229,7 @@ class WolfxCollector:
     def _initialize_health_rows(self) -> None:
         with SessionLocal() as session, session.begin():
             self._get_health(session)
+            self._get_health(session, WEATHER_HEALTH_KEY)
             for source in LOGICAL_SOURCES:
                 self._get_health(session, f"ws:{source}")
                 self._get_health(session, f"http:{source}")

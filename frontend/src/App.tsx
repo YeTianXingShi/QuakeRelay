@@ -8,6 +8,7 @@ import LocationsPage from './pages/LocationsPage'
 import OverviewPage from './pages/OverviewPage'
 import SourcesPage from './pages/SourcesPage'
 import WebhooksPage from './pages/WebhooksPage'
+import WeatherPage from './pages/WeatherPage'
 
 const { Header, Content, Footer } = Layout
 
@@ -22,6 +23,11 @@ export default function App() {
         const event = JSON.parse(message.data) as { type?: string }
         if (event.type === 'source_health') {
           void queryClient.invalidateQueries({ queryKey: ['overview'] })
+          void queryClient.invalidateQueries({ queryKey: ['sources'] })
+          return
+        }
+        if (event.type === 'weather') {
+          void queryClient.invalidateQueries({ queryKey: ['weather'] })
           void queryClient.invalidateQueries({ queryKey: ['sources'] })
           return
         }
@@ -45,6 +51,7 @@ export default function App() {
           items={[
             { key: '/', label: <Link to="/">概览</Link> },
             { key: '/events', label: <Link to="/events">地震记录</Link> },
+            { key: '/weather', label: <Link to="/weather">气象情况</Link> },
             { key: '/sources', label: <Link to="/sources">数据源状态</Link> },
             { key: '/locations', label: <Link to="/locations">关注地点</Link> },
             { key: '/webhooks', label: <Link to="/webhooks">推送渠道</Link> },
@@ -62,6 +69,7 @@ export default function App() {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:id" element={<EventDetailPage />} />
+          <Route path="/weather" element={<WeatherPage />} />
           <Route path="/sources" element={<SourcesPage />} />
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/webhooks" element={<WebhooksPage />} />

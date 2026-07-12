@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,6 +22,7 @@ from .models import (
     NotificationJob,
     SourceHealth,
     SourceReport,
+    WeatherSnapshot,
     WebhookEndpoint,
     uuid4_str,
 )
@@ -33,6 +34,7 @@ from .schemas import (
     WebhookUpdate,
 )
 from .sources import source_descriptor
+from .weather import weather_matches
 
 router = APIRouter(prefix="/api/v1")
 
@@ -116,6 +118,67 @@ def source_statuses(session: Session = Depends(get_db)) -> list[dict[str, Any]]:
         }
         for row in session.scalars(select(SourceHealth).order_by(SourceHealth.source)).all()
     ]
+
+
+def _weather_snapshot_dict(
+    session: Session, snapshot: WeatherSnapshot
+) -> dict[str, Any]:
+    matches = weather_matches(session, snapshot)
+    by_entry = {
+        (str(item["kind"]), int(item["rank"])): item for item in matches
+    }
+
+    def ranking(kind: str, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                **entry,
+                "rank": index,
+                "matched": (kind, index) in by_entry,
+                "location_names": by_entry.get((kind, index), {}).get(
+                    "location_names", []
+                ),
+            }
+            for index, entry in enumerate(entries, start=1)
+        ]
+
+    return {
+        "id": snapshot.id,
+        "hour_key": snapshot.hour_key,
+        "observed_at": _utc(snapshot.observed_at),
+        "temperature_rank": ranking("temperature", snapshot.temperature_rank),
+        "rain_rank": ranking("rain", snapshot.rain_rank),
+        "wind_rank": ranking("wind", snapshot.wind_rank),
+        "content_hash": snapshot.content_hash,
+        "updated_at": _utc(snapshot.updated_at),
+    }
+
+
+@router.get("/weather")
+def list_weather(
+    day: date | None = Query(default=None, alias="date"),
+    hour: int | None = Query(default=None, ge=0, le=23),
+    limit: int = Query(default=24, ge=1, le=200),
+    session: Session = Depends(get_db),
+) -> dict[str, Any]:
+    statement = select(WeatherSnapshot)
+    if day is not None:
+        prefix = day.strftime("%Y%m%d")
+        if hour is None:
+            statement = statement.where(WeatherSnapshot.hour_key.like(f"{prefix}%"))
+        else:
+            statement = statement.where(
+                WeatherSnapshot.hour_key == f"{prefix}{hour:02d}00"
+            )
+    elif hour is not None:
+        statement = statement.where(
+            func.substr(WeatherSnapshot.hour_key, 9, 2) == f"{hour:02d}"
+        )
+    snapshots = session.scalars(
+        statement.order_by(WeatherSnapshot.hour_key.desc()).limit(limit)
+    ).all()
+    return {
+        "items": [_weather_snapshot_dict(session, snapshot) for snapshot in snapshots]
+    }
 
 
 @router.get("/config/public")
@@ -256,6 +319,9 @@ def _location_dict(location: Location) -> dict[str, Any]:
         "id": location.id,
         "name": location.name,
         "address": location.address,
+        "province": location.province,
+        "city": location.city,
+        "district": location.district,
         "latitude": location.latitude,
         "longitude": location.longitude,
         "gcj02_latitude": gcj_lat,
@@ -280,6 +346,9 @@ def create_location(body: LocationCreate, session: Session = Depends(get_db)) ->
     location = Location(
         name=body.name,
         address=body.address,
+        province=body.province,
+        city=body.city,
+        district=body.district,
         latitude=lat,
         longitude=lon,
         enabled=body.enabled,
@@ -300,7 +369,7 @@ def update_location(
         raise HTTPException(404, "Location not found")
     values = body.model_dump(exclude_unset=True)
     coordinate_system = values.pop("coordinate_system", body.coordinate_system)
-    for key in ("name", "address", "enabled"):
+    for key in ("name", "address", "province", "city", "district", "enabled"):
         if key in values:
             setattr(location, key, values[key])
     if "latitude" in values or "longitude" in values:
@@ -347,6 +416,8 @@ def _webhook_dict(endpoint: WebhookEndpoint) -> dict[str, Any]:
         "has_bot_token": bool(config.get("bot_token")),
         "timeout_seconds": endpoint.timeout_seconds,
         "enabled": endpoint.enabled,
+        "earthquake_enabled": endpoint.earthquake_enabled,
+        "weather_enabled": endpoint.weather_enabled,
     }
 
 
@@ -364,6 +435,8 @@ def create_webhook(body: WebhookCreate, session: Session = Depends(get_db)) -> d
         encrypted_headers=encrypt_json(body.headers),
         timeout_seconds=body.timeout_seconds,
         enabled=body.enabled,
+        earthquake_enabled=body.earthquake_enabled,
+        weather_enabled=body.weather_enabled,
     )
     session.add(endpoint)
     session.commit()
@@ -387,6 +460,8 @@ def create_telegram(body: TelegramCreate, session: Session = Depends(get_db)) ->
         ),
         timeout_seconds=body.timeout_seconds,
         enabled=body.enabled,
+        earthquake_enabled=body.earthquake_enabled,
+        weather_enabled=body.weather_enabled,
     )
     session.add(endpoint)
     session.commit()

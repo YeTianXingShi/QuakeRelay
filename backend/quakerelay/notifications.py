@@ -16,6 +16,7 @@ from .models import (
     ImpactEstimate,
     JobStatus,
     NotificationJob,
+    WeatherSnapshot,
     WebhookEndpoint,
     uuid4_str,
 )
@@ -53,6 +54,21 @@ def telegram_message(payload: dict[str, Any]) -> str:
             lines.append(f"数据源：{details['source']}")
         if details.get("error"):
             lines.append(f"错误：{str(details['error'])[:500]}")
+        return "\n".join(lines)[:4000]
+
+    if kind == "weather.ranking":
+        weather = payload.get("weather") or {}
+        kind_labels = {"temperature": "高温", "rain": "降雨", "wind": "风速"}
+        lines = ["⛅ 关注地点进入全国气象实况排行"]
+        lines.append(f"榜单时间：{_china_time(weather.get('observed_at'))}（北京时间）")
+        for match in weather.get("matches") or []:
+            names = "、".join(match.get("location_names") or []) or "关注地点"
+            label = kind_labels.get(match.get("kind"), "气象")
+            lines.append(
+                f"• {label}第 {match.get('rank')} 名：{match.get('province')}"
+                f"{match.get('city')} {match.get('value')}（匹配：{names}）"
+            )
+        lines.extend(["", "数据来自第三方全国实况排行榜，仅供参考。"])
         return "\n".join(lines)[:4000]
 
     event = payload.get("event") or {}
@@ -175,7 +191,10 @@ def enqueue_for_all_endpoints(
     delayed: bool = False,
 ) -> int:
     endpoints = session.scalars(
-        select(WebhookEndpoint).where(WebhookEndpoint.enabled.is_(True))
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.enabled.is_(True),
+            WebhookEndpoint.earthquake_enabled.is_(True),
+        )
     ).all()
     if not endpoints:
         return 0
@@ -206,7 +225,10 @@ def enqueue_for_all_endpoints(
 
 def enqueue_system_notification(session: Session, kind: str, details: dict[str, Any]) -> None:
     endpoints = session.scalars(
-        select(WebhookEndpoint).where(WebhookEndpoint.enabled.is_(True))
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.enabled.is_(True),
+            WebhookEndpoint.earthquake_enabled.is_(True),
+        )
     ).all()
     minute = datetime.now(UTC).strftime("%Y%m%d%H%M")
     for endpoint in endpoints:
@@ -225,6 +247,51 @@ def enqueue_system_notification(session: Session, kind: str, details: dict[str, 
                 },
             )
         )
+
+
+def enqueue_weather_notification(
+    session: Session, snapshot: WeatherSnapshot, matches: list[dict[str, Any]]
+) -> int:
+    if not matches:
+        return 0
+    endpoints = session.scalars(
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.enabled.is_(True),
+            WebhookEndpoint.weather_enabled.is_(True),
+        )
+    ).all()
+    count = 0
+    for endpoint in endpoints:
+        key = f"weather:{snapshot.hour_key}"
+        existing = session.scalar(
+            select(NotificationJob.id).where(
+                NotificationJob.endpoint_id == endpoint.id,
+                NotificationJob.idempotency_key == key,
+            )
+        )
+        if existing:
+            continue
+        session.add(
+            NotificationJob(
+                endpoint_id=endpoint.id,
+                idempotency_key=key,
+                kind="weather.ranking",
+                payload={
+                    "schema_version": "1.0",
+                    "notification_id": uuid4_str(),
+                    "kind": "weather.ranking",
+                    "sent_at": datetime.now(UTC).isoformat(),
+                    "weather": {
+                        "hour_key": snapshot.hour_key,
+                        "observed_at": _utc_iso(snapshot.observed_at),
+                        "matches": matches,
+                    },
+                    "disclaimer": "数据来自第三方全国实况排行榜，仅供参考。",
+                },
+            )
+        )
+        count += 1
+    return count
 
 
 class NotificationWorker:

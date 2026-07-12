@@ -18,7 +18,8 @@ export default function SourcesPage() {
   const [state, setState] = useState<SourceState>()
   const query = useQuery({ queryKey: ['sources'], queryFn: () => api<SourceStatus[]>('/sources') })
   const transport = useMemo(() => query.data?.find((source) => source.channel === 'transport'), [query.data])
-  const sources = useMemo(() => (query.data ?? []).filter((source) => source.channel !== 'transport'), [query.data])
+  const weather = useMemo(() => query.data?.find((source) => source.logical_source === 'weather_rank'), [query.data])
+  const sources = useMemo(() => (query.data ?? []).filter((source) => source.channel !== 'transport' && source.logical_source !== 'weather_rank'), [query.data])
   const counts = useMemo(() => sources.reduce((result, source) => {
     const current = sourceState(source)
     result[current] += 1
@@ -57,6 +58,22 @@ export default function SourcesPage() {
               : <Typography.Text type="secondary">尚未收到原始心跳数据。</Typography.Text>,
           }]} />
         </Space> : <Typography.Text type="secondary">采集器尚未写入连接状态。</Typography.Text>}
+      </Card>
+      <Card title="气象数据源" loading={query.isLoading}>
+        {weather ? <Space direction="vertical" className="full-width">
+          <Descriptions column={{ xs: 1, md: 3 }}>
+            <Descriptions.Item label="数据源">Wolfx 全国气象实况排行（weather_rank）</Descriptions.Item>
+            <Descriptions.Item label="状态">{(() => { const current = sourceState(weather); return <Tag color={STATE_COLORS[current]}>{sourceStateLabel(current)}</Tag> })()}</Descriptions.Item>
+            <Descriptions.Item label="最后同步">{weather.last_message_at ? formatChinaTime(weather.last_message_at) : '尚无同步记录'}</Descriptions.Item>
+            <Descriptions.Item label="轮询周期">每 5 分钟</Descriptions.Item>
+            <Descriptions.Item label="错误信息" span={2}>{weather.last_error || '—'}</Descriptions.Item>
+          </Descriptions>
+          <Collapse size="small" items={[{
+            key: 'weather',
+            label: '查看最近一次接口原始 JSON',
+            children: weather.latest_payload ? <pre className="source-payload">{JSON.stringify(weather.latest_payload, null, 2)}</pre> : <Typography.Text type="secondary">尚未收到原始数据。</Typography.Text>,
+          }]} />
+        </Space> : <Typography.Text type="secondary">气象采集器尚未写入状态。</Typography.Text>}
       </Card>
       <Row gutter={[16, 16]}>
         <Col xs={12} md={6}><Card><Statistic title="数据源" value={sources.length} /></Card></Col>

@@ -30,6 +30,7 @@ const DELIVERY_KIND_LABELS: Record<string, string> = {
   'system.test': '测试推送',
   'system.source_down': '数据源异常',
   'system.source_recovered': '数据源恢复',
+  'weather.ranking': '气象实况排行',
 }
 
 const CONFIDENCE_LABELS: Record<string, string> = {

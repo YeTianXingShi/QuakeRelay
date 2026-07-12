@@ -19,6 +19,8 @@ class SourceDescriptor:
 def source_descriptor(key: str) -> SourceDescriptor:
     if key == "wolfx_ws":
         return SourceDescriptor("transport", "wolfx_ws", "Wolfx 实时连接")
+    if key == "http:weather_rank":
+        return SourceDescriptor("http", "weather_rank", "Wolfx 全国气象实况排行")
     if ":" in key:
         channel, logical_source = key.split(":", 1)
         display = LOGICAL_SOURCES.get(logical_source, logical_source)

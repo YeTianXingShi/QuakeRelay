@@ -20,7 +20,7 @@ export default function OverviewPage() {
       <Link to="/sources" className="source-summary-link">
         <Card title="数据源状态" hoverable loading={overview.isLoading}>
           {(() => {
-            const sources = (overview.data?.sources ?? []).filter((source) => source.channel !== 'transport')
+            const sources = (overview.data?.sources ?? []).filter((source) => source.channel !== 'transport' && source.logical_source !== 'weather_rank')
             const counts = sources.reduce((result, source) => ({ ...result, [sourceState(source)]: result[sourceState(source)] + 1 }), { normal: 0, abnormal: 0, unreported: 0 })
             return <Space size="large" wrap>
               <Statistic title="数据源" value={sources.length} suffix="个" />

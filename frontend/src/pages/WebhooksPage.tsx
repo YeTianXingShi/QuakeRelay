@@ -21,7 +21,7 @@ export default function WebhooksPage() {
   const create = useMutation({ mutationFn: (body: Record<string, unknown>) => api('/webhooks', { method: 'POST', body: JSON.stringify(body) }), onSuccess: () => { refresh(); setOpen(false); form.resetFields(); message.success('Webhook 已添加') } })
   const createTelegram = useMutation({ mutationFn: (body: Record<string, unknown>) => api('/webhooks/telegram', { method: 'POST', body: JSON.stringify(body) }), onSuccess: () => { refresh(); setTelegramOpen(false); telegramForm.resetFields(); message.success('Telegram 推送渠道已添加') } })
   const remove = useMutation({ mutationFn: (id: string) => api(`/webhooks/${id}`, { method: 'DELETE' }), onSuccess: refresh })
-  const toggle = useMutation({ mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api(`/webhooks/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }), onSuccess: refresh })
+  const toggle = useMutation({ mutationFn: ({ id, ...body }: { id: string; enabled?: boolean; earthquake_enabled?: boolean; weather_enabled?: boolean }) => api(`/webhooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }), onSuccess: refresh })
   const test = useMutation({ mutationFn: (id: string) => api(`/webhooks/${id}/test`, { method: 'POST' }), onSuccess: () => { message.success('测试消息已入队'); refresh() } })
   const retry = useMutation({ mutationFn: (id: string) => api(`/deliveries/${id}/retry`, { method: 'POST' }), onSuccess: refresh })
 
@@ -30,7 +30,7 @@ export default function WebhooksPage() {
       const values = await form.validateFields()
       const endpoint = await api<Webhook>('/webhooks', {
         method: 'POST',
-        body: JSON.stringify({ name: values.name, url: values.url, timeout_seconds: values.timeout_seconds, headers: JSON.parse(values.headers_text) }),
+        body: JSON.stringify({ name: values.name, url: values.url, timeout_seconds: values.timeout_seconds, headers: JSON.parse(values.headers_text), earthquake_enabled: values.earthquake_enabled, weather_enabled: values.weather_enabled }),
       })
       await api(`/webhooks/${endpoint.id}/test`, { method: 'POST' })
       setOpen(false)
@@ -65,11 +65,13 @@ export default function WebhooksPage() {
       <Card title="推送配置">
         <List dataSource={webhooks.data} loading={webhooks.isLoading} renderItem={(item) => (
           <List.Item actions={[
-            <Switch key="enabled" checked={item.enabled} onChange={(enabled) => toggle.mutate({ id: item.id, enabled })} />,
+            <Space key="enabled">渠道启用<Switch checked={item.enabled} onChange={(enabled) => toggle.mutate({ id: item.id, enabled })} /></Space>,
+            <Space key="earthquake">地震<Switch size="small" checked={item.earthquake_enabled} onChange={(earthquake_enabled) => toggle.mutate({ id: item.id, earthquake_enabled })} /></Space>,
+            <Space key="weather">气象<Switch size="small" checked={item.weather_enabled} onChange={(weather_enabled) => toggle.mutate({ id: item.id, weather_enabled })} /></Space>,
             <Button key="test" size="small" loading={test.isPending && test.variables === item.id} onClick={() => test.mutate(item.id)}>测试推送</Button>,
             <Popconfirm key="delete" title="删除端点及其发送记录？" onConfirm={() => remove.mutate(item.id)}><Button danger type="link">删除</Button></Popconfirm>,
           ]}>
-            <List.Item.Meta title={<Space>{item.name}<Tag color={item.channel_type === 'telegram' ? 'blue' : 'default'}>{item.channel_type === 'telegram' ? 'Telegram' : 'Webhook'}</Tag></Space>} description={item.channel_type === 'telegram'
+            <List.Item.Meta title={<Space>{item.name}<Tag color={item.channel_type === 'telegram' ? 'blue' : 'default'}>{item.channel_type === 'telegram' ? 'Telegram' : 'Webhook'}</Tag>{item.earthquake_enabled && <Tag>地震</Tag>}{item.weather_enabled && <Tag color="cyan">气象</Tag>}</Space>} description={item.channel_type === 'telegram'
               ? <>会话 ID：{item.chat_id} {item.message_thread_id ? `· 话题 ID ${item.message_thread_id}` : ''} · {item.disable_notification ? '静默发送' : '正常通知'} · 超时 {item.timeout_seconds} 秒</>
               : <>{item.url}<br />请求头：{item.header_names.join(', ') || '无'} · 超时 {item.timeout_seconds} 秒</>} />
           </List.Item>
@@ -96,14 +98,16 @@ export default function WebhooksPage() {
           <Button key="save-test" onClick={() => void saveGenericAndTest()}>保存并测试推送</Button>,
         ]}
       >
-        <Form form={form} layout="vertical" initialValues={{ timeout_seconds: 10, headers_text: '{}' }} onFinish={(values) => {
-          try { create.mutate({ name: values.name, url: values.url, timeout_seconds: values.timeout_seconds, headers: JSON.parse(values.headers_text) }) }
+        <Form form={form} layout="vertical" initialValues={{ timeout_seconds: 10, headers_text: '{}', earthquake_enabled: true, weather_enabled: false }} onFinish={(values) => {
+          try { create.mutate({ name: values.name, url: values.url, timeout_seconds: values.timeout_seconds, headers: JSON.parse(values.headers_text), earthquake_enabled: values.earthquake_enabled, weather_enabled: values.weather_enabled }) }
           catch { message.error('请求头必须是合法 JSON 对象') }
         }}>
           <Form.Item label="名称" name="name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item label="URL" name="url" rules={[{ required: true, type: 'url' }]}><Input placeholder="https://example.com/webhook" /></Form.Item>
           <Form.Item label="请求头（JSON）" name="headers_text" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder={'{"Authorization":"Bearer ..."}'} /></Form.Item>
           <Form.Item label="超时秒数" name="timeout_seconds"><InputNumber min={1} max={60} /></Form.Item>
+          <Form.Item name="earthquake_enabled" valuePropName="checked"><Checkbox>接收地震通知</Checkbox></Form.Item>
+          <Form.Item name="weather_enabled" valuePropName="checked"><Checkbox>接收气象排行通知</Checkbox></Form.Item>
         </Form>
       </Modal>
       <Modal
@@ -119,13 +123,15 @@ export default function WebhooksPage() {
         <Typography.Paragraph type="secondary">
           先通过 <Typography.Link href="https://t.me/BotFather" target="_blank">@BotFather</Typography.Link> 创建机器人并取得 Token，然后把机器人加入目标私聊、群组或频道。
         </Typography.Paragraph>
-        <Form form={telegramForm} layout="vertical" initialValues={{ name: 'Telegram', timeout_seconds: 10, disable_notification: false }} onFinish={(values) => createTelegram.mutate(values)}>
+        <Form form={telegramForm} layout="vertical" initialValues={{ name: 'Telegram', timeout_seconds: 10, disable_notification: false, earthquake_enabled: true, weather_enabled: false }} onFinish={(values) => createTelegram.mutate(values)}>
           <Form.Item label="名称" name="name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item label="机器人令牌（Bot Token）" name="bot_token" rules={[{ required: true }, { pattern: /^\d+:[A-Za-z0-9_-]{20,}$/, message: '令牌格式不正确' }]}><Input.Password autoComplete="new-password" placeholder="123456789:AA..." /></Form.Item>
           <Form.Item label="会话 ID（Chat ID）" name="chat_id" extra="私聊通常为正整数，群组通常以 -100 开头，频道也可填写 @username。" rules={[{ required: true }]}><Input placeholder="-1001234567890" /></Form.Item>
           <Form.Item label="话题 ID（可选）" name="message_thread_id" extra="仅论坛群组需要填写。"><InputNumber min={1} precision={0} className="full-width" /></Form.Item>
           <Form.Item label="超时秒数" name="timeout_seconds"><InputNumber min={1} max={60} /></Form.Item>
           <Form.Item name="disable_notification" valuePropName="checked"><Checkbox>静默发送，不产生声音提醒</Checkbox></Form.Item>
+          <Form.Item name="earthquake_enabled" valuePropName="checked"><Checkbox>接收地震通知</Checkbox></Form.Item>
+          <Form.Item name="weather_enabled" valuePropName="checked"><Checkbox>接收气象排行通知</Checkbox></Form.Item>
         </Form>
       </Modal>
     </Space>
