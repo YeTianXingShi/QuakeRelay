@@ -19,6 +19,12 @@
 
 要求：Docker Engine、Docker Compose，以及一个可用的高德地图 JS API Key 和安全密钥。
 
+官方容器镜像由 GitHub Actions 自动构建，支持 `linux/amd64` 和 `linux/arm64`：
+
+```bash
+docker pull ghcr.io/yetianxingshi/quakerelay:latest
+```
+
 ```bash
 cp .env.example .env
 ```
@@ -35,11 +41,26 @@ docker run --rm python:3.12-slim sh -c "pip install -q cryptography && python -c
 - `QUAKERELAY_AMAP_SECURITY_CODE`：高德安全密钥。
 - `QUAKERELAY_PUBLIC_BASE_URL`：外部访问地址。
 
-启动：
+直接使用 GHCR 镜像启动：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+也可以从当前源码本地构建：
 
 ```bash
 docker compose up -d --build
 ```
+
+可通过 `.env` 的 `QUAKERELAY_IMAGE` 选择固定版本，例如：
+
+```dotenv
+QUAKERELAY_IMAGE=ghcr.io/yetianxingshi/quakerelay:v1.0.0
+```
+
+推送到 `main` 时发布 `latest` 和 `sha-*` 标签；推送 `v*` Git 标签时同时发布对应版本标签。
 
 默认只监听宿主机 `127.0.0.1:8080`。请在前面配置带身份认证和 TLS 的反向代理，或仅通过 VPN/内网访问。应用自身没有登录保护。
 

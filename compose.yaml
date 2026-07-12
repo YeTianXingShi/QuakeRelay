@@ -1,5 +1,6 @@
 services:
   quakerelay:
+    image: ${QUAKERELAY_IMAGE:-ghcr.io/yetianxingshi/quakerelay:latest}
     build: .
     container_name: quakerelay
     restart: unless-stopped
