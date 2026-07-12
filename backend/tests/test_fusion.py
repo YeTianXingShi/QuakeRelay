@@ -1,6 +1,7 @@
 import hashlib
 from datetime import UTC, datetime
 
+from quakerelay.api import delete_location
 from quakerelay.fusion import FusionService
 from quakerelay.models import (
     Earthquake,
@@ -84,6 +85,32 @@ def test_notification_is_merged_for_all_locations(session: Session) -> None:
     assert job is not None
     assert len(job.payload["impacts"]) == 2
     assert job.kind == "earthquake.initial"
+
+
+def test_deleting_location_removes_all_historical_impacts(session: Session) -> None:
+    first = Location(name="地点A", latitude=30.05, longitude=110.05)
+    second = Location(name="地点B", latitude=30.1, longitude=110.1)
+    session.add_all(
+        [
+            first,
+            second,
+            WebhookEndpoint(name="test", url="https://example.com", encrypted_headers=b""),
+        ]
+    )
+    payload = _payload("cenc_eew", "event-delete", 5.0)
+    now = datetime.now(UTC).astimezone().replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+    payload["ReportTime"] = payload["OriginTime"] = now
+    FusionService().process_raw(session, _raw(session, payload, "6" * 64))
+    session.commit()
+
+    delete_location(first.id, session)
+
+    assert session.get(Location, first.id) is None
+    remaining = session.scalars(select(ImpactEstimate)).all()
+    assert {impact.location_id for impact in remaining} == {second.id}
+    job = session.scalar(select(NotificationJob))
+    assert job is not None
+    assert [impact["location_id"] for impact in job.payload["impacts"]] == [second.id]
 
 
 def test_corrected_same_report_number_is_preserved(session: Session) -> None:

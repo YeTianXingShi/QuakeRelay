@@ -31,7 +31,7 @@ export default function LocationsPage() {
         <List loading={query.isLoading} dataSource={query.data} renderItem={(item) => (
           <List.Item actions={[
             <Switch key="enabled" checked={item.enabled} onChange={(enabled) => toggle.mutate({ id: item.id, enabled })} />,
-            <Popconfirm key="delete" title="删除这个关注地点？" onConfirm={() => remove.mutate(item.id)}><Button danger type="link">删除</Button></Popconfirm>,
+            <Popconfirm key="delete" title="永久删除这个关注地点？" description="该地点的所有历史地震影响记录也会被永久删除，无法恢复。" okText="永久删除" okButtonProps={{ danger: true }} cancelText="取消" onConfirm={() => remove.mutate(item.id)}><Button danger type="link">删除</Button></Popconfirm>,
           ]}>
             <List.Item.Meta title={<Space>{item.name}{(!item.province || (!item.city && !item.district)) && <Tag color="gold">需重新添加以启用气象匹配</Tag>}</Space>} description={<>
               <div>{item.address || '无地址'} · {item.latitude.toFixed(5)}, {item.longitude.toFixed(5)}</div>

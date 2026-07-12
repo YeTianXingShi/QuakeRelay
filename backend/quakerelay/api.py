@@ -388,8 +388,26 @@ def delete_location(location_id: str, session: Session = Depends(get_db)) -> Non
     location = session.get(Location, location_id)
     if not location:
         raise HTTPException(404, "Location not found")
-    location.enabled = False
-    location.deleted_at = datetime.now(UTC)
+    jobs = session.scalars(
+        select(NotificationJob).where(NotificationJob.earthquake_id.is_not(None))
+    ).all()
+    for job in jobs:
+        impacts = job.payload.get("impacts")
+        if not isinstance(impacts, list):
+            continue
+        retained = [
+            impact
+            for impact in impacts
+            if not isinstance(impact, dict) or impact.get("location_id") != location_id
+        ]
+        if len(retained) != len(impacts):
+            job.payload = {**job.payload, "impacts": retained}
+    for impact in session.scalars(
+        select(ImpactEstimate).where(ImpactEstimate.location_id == location_id)
+    ).all():
+        session.delete(impact)
+    session.flush()
+    session.delete(location)
     session.commit()
 
 
